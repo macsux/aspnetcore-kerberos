@@ -1,14 +1,13 @@
 ﻿using System;
 using System.Runtime.InteropServices;
 using Microsoft.AspNetCore.Authentication.GssKerberos.Disposables;
-
+using Microsoft.AspNetCore.Authentication.GssKerberos.Gss;
 using static Microsoft.AspNetCore.Authentication.GssKerberos.Native.Krb5Interop;
 
 namespace Microsoft.AspNetCore.Authentication.GssKerberos
 {
-    public class GssInitiator : IDisposable
+    public class GssInitiator : GssActor, IDisposable
     {
-        private IntPtr _context;
         private IntPtr _credentials;
         private IntPtr _gssTargetName;
 
@@ -17,7 +16,7 @@ namespace Microsoft.AspNetCore.Authentication.GssKerberos
         public GssInitiator(GssCredential credential, string spn)
         {
             _credentials = credential.Credentials;
-
+            //_credentials = new IntPtr();
             using (var gssTargetNameBuffer = GssBuffer.FromString(spn))
             {
                 // use the buffer to import the name into a gss_name
@@ -49,13 +48,14 @@ namespace Microsoft.AspNetCore.Authentication.GssKerberos
                 ref _context,
                 _gssTargetName,
                 ref GssSpnegoMechOidDesc,
-                0,
+                //                GSS_C_DCE_STYLE,
+                GssFlags.GSS_C_CONF_FLAG | GssFlags.GSS_C_INTEG_FLAG | GssFlags.GSS_C_PROT_READY_FLAG, //| GSS_C_DCE_STYLE,
                 0,
                 IntPtr.Zero,
                 ref gssToken.Value,
                 IntPtr.Zero,
                 out var output,
-                IntPtr.Zero,
+                out _actualFlags,
                 IntPtr.Zero
             );
 
@@ -103,13 +103,7 @@ namespace Microsoft.AspNetCore.Authentication.GssKerberos
                         majorStatus, minorStatus, GssNtHostBasedService);
             }
 
-            if (_context != IntPtr.Zero)
-            {
-                var majorStatus = gss_delete_sec_context(out var minorStatus, ref _context);
-                if (majorStatus != GSS_S_COMPLETE)
-                    throw new GssException("An error occurred releasing the token buffer allocated by the GSS provider",
-                        majorStatus, minorStatus, GssSpnegoMechOidDesc);
-            }
+            base.Dispose();
         }
     }
 }

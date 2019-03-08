@@ -2,15 +2,16 @@
 using System.Linq;
 using System.Runtime.InteropServices;
 using Microsoft.AspNetCore.Authentication.GssKerberos.Disposables;
+using Microsoft.AspNetCore.Authentication.GssKerberos.Gss;
 using Microsoft.AspNetCore.Authentication.GssKerberos.Pac;
 using static Microsoft.AspNetCore.Authentication.GssKerberos.Native.Krb5Interop;
 
 namespace Microsoft.AspNetCore.Authentication.GssKerberos
 {
-    public class GssAcceptor : IAcceptor
+    public class GssAcceptor : GssActor, IAcceptor
     {
         private readonly IntPtr _acceptorCredentials;
-        private IntPtr _context;
+        
         private IntPtr _sourceName;
         private uint _flags;
         private uint _expiryTime;
@@ -30,10 +31,20 @@ namespace Microsoft.AspNetCore.Authentication.GssKerberos
         /// <summary>
         /// The final negotiated flags
         /// </summary>
-        public uint Flags { get; private set; }
+        public GssFlags Flags { get; private set; }
 
         public GssAcceptor(GssCredential credential) => 
             _acceptorCredentials = credential.Credentials;
+
+        public string[] QueryAttributes()
+        {
+            var majorStatus = gss_inquire_name(out var minorStatus, _sourceName, out int mechName, out var oids, out var attrsPtr);
+            if(majorStatus != GSS_S_COMPLETE)
+                throw new GssException("Error querying", majorStatus, minorStatus, GssSpnegoMechOidDesc);
+            var buffSet = Marshal.PtrToStructure<GssBufferSet>(attrsPtr);
+            var retval = buffSet.Buffers.Select(x => Marshal.PtrToStringAnsi(x.value)).ToArray();
+            return retval;
+        }
 
         public byte[] Accept(byte[] token)
         {
@@ -49,9 +60,11 @@ namespace Microsoft.AspNetCore.Authentication.GssKerberos
                     out _sourceName,
                     IntPtr.Zero,        // dont specify any mechs, which means we don't know the final mech
                     out var output,
-                    out _flags, out _expiryTime, IntPtr.Zero
+                    out _flags, 
+                    out _expiryTime, 
+                    IntPtr.Zero
                 );
-
+                    
                 switch (majorStatus)
                 {
                     case GSS_S_COMPLETE:
@@ -100,7 +113,7 @@ namespace Microsoft.AspNetCore.Authentication.GssKerberos
                     majorStatus, minorStatus, GssSpnegoMechOidDesc);
 
             // Set the context properties on the acceptor
-            Flags = _flags;
+            Flags = (GssFlags)_flags;
             IsEstablished = true;
             Principal = Marshal.PtrToStringAnsi(nameBuffer.value, (int)nameBuffer.length);
 
@@ -109,6 +122,9 @@ namespace Microsoft.AspNetCore.Authentication.GssKerberos
             if (majorStatus != GSS_S_COMPLETE)
                 throw new GssException("An error occurred releasing the display name of the principal",
                     majorStatus, minorStatus, GssSpnegoMechOidDesc);
+
+            
+
 
             // The Windows AD-WIN2K-PAC certificate is located in the Authzdata, MIT Kerberos provides an API to enable
             // us to a get the decrypted bytes for well known buffers, the 'urn:mspac:logon-info' contains the group sids
@@ -157,13 +173,7 @@ namespace Microsoft.AspNetCore.Authentication.GssKerberos
                         majorStatus, minorStatus, GssNtHostBasedService);
             }
 
-            if (_context != IntPtr.Zero)
-            {
-                var majorStatus = gss_delete_sec_context(out var minorStatus, ref _context);
-                if (majorStatus != GSS_S_COMPLETE)
-                    throw new GssException("The GSS provider returned an error while attempting to delete the GSS Context",
-                        majorStatus, minorStatus, GssSpnegoMechOidDesc);
-            }
+            base.Dispose();
         }
     }
 }
