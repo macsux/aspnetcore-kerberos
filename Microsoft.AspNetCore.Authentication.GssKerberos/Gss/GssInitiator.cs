@@ -93,17 +93,5 @@ namespace Microsoft.AspNetCore.Authentication.GssKerberos
             return new byte[0];
         }
 
-        public void Dispose()
-        {
-            if (_gssTargetName != IntPtr.Zero)
-            {
-                var majorStatus = gss_release_name(out var minorStatus, ref _gssTargetName);;
-                if (majorStatus != GSS_S_COMPLETE)
-                    throw new GssException("An error occurred releasing the gss service principal name",
-                        majorStatus, minorStatus, GssNtHostBasedService);
-            }
-
-            base.Dispose();
-        }
     }
 }

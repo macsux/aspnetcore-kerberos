@@ -30,7 +30,7 @@ namespace Pivotal.IWA.Samples.GssConversation
                     
                     token = acceptor.Accept(token);
                     token = initiator.Initiate(token);
-
+                    acceptor.Encrypt(ASCIIEncoding.ASCII.GetBytes("test"));
                 }
             }
         }
